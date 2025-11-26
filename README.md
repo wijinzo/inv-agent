@@ -22,7 +22,7 @@ A powerful, agentic AI system designed to perform comprehensive investment resea
 ![Investment Report](assets/investment_report.png)
 *AI-Generated Investment Report*
 
-## �📊 Workflow
+## 📊 Workflow
 
 ```mermaid
 graph TD
