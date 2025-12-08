@@ -2,50 +2,51 @@ from langchain_core.tools import tool
 import yfinance as yf
 import pandas as pd
 
+# 讓表格對齊中文
+pd.set_option('display.unicode.east_asian_width', True)
+
 @tool
 def get_stock_analysis_data(ticker: str) -> str:
     """
-    Retrieves comprehensive stock data for a given ticker, including:
-    1. Real-time valuation and analyst estimates (Snapshot).
-    2. Long-term price history and financial statement trends (5-year Trend).
-    
-    Use this tool for thorough investment analysis.
+    Retrieves comprehensive stock data for a given ticker.
+    Includes Real-time valuation, Analyst estimates, and 5-year Financial trends.
     """
     try:
         stock = yf.Ticker(ticker)
         
-        # ==========================================
-        # PART 1: Real-Time Snapshot (即時資料)
-        # ==========================================
+        # ... (Part 1: Real-Time Snapshot 保持不變) ...
         info = stock.info
         
+        def fmt_num(num):
+            if isinstance(num, (int, float)):
+                if abs(num) >= 1e12: return f"{num/1e12:.2f}T"
+                if abs(num) >= 1e9: return f"{num/1e9:.2f}B"
+                if abs(num) >= 1e6: return f"{num/1e6:.2f}M"
+                return f"{num:.2f}"
+            return num
+
         valuation = {
-            "Market Cap": info.get("marketCap"),
-            "Trailing P/E": info.get("trailingPE"),
-            "Forward P/E": info.get("forwardPE"),
-            "PEG Ratio": info.get("pegRatio"),
-            "Price/Book": info.get("priceToBook"),
-            "Dividend Yield": info.get("dividendYield"),
-            # 這些是目前的，作為參考
-            "Current ROE": info.get("returnOnEquity"),
-            "Current Operating Margin": info.get("operatingMargins")
+            "Market Cap": fmt_num(info.get("marketCap")),
+            "Trailing P/E": fmt_num(info.get("trailingPE")),
+            "Forward P/E": fmt_num(info.get("forwardPE")),
+            "PEG Ratio": fmt_num(info.get("pegRatio")),
+            "Price/Book": fmt_num(info.get("priceToBook")),
+            "Dividend Yield": fmt_num(info.get("dividendYield")),
+            "Current ROE": fmt_num(info.get("returnOnEquity")),
+            "Current Op Margin": fmt_num(info.get("operatingMargins")) # 稍微縮短 key 名稱
         }
 
         estimates = {
-            "Target Mean Price": info.get("targetMeanPrice"),
+            "Target Mean": info.get("targetMeanPrice"), # 縮短 key 名稱
             "Target High": info.get("targetHighPrice"),
             "Recommendation": info.get("recommendationKey"),
-            "Number of Analyst Opinions": info.get("numberOfAnalystOpinions")
+            "Num Analysts": info.get("numberOfAnalystOpinions")
         }
 
-        # ==========================================
-        # PART 2: Long-Term Trends (長期趨勢)
-        # ==========================================
-        
-        # 1. Price History (5 Years Monthly)
+        # ... (Part 2: Long-Term Trends) ...
         history = stock.history(period="5y", interval="1mo")
         if history.empty:
-            price_trend = "No price data available."
+            price_trend = "No price data."
         else:
             start_price = history.iloc[0]['Close']
             curr_price = history.iloc[-1]['Close']
@@ -53,14 +54,14 @@ def get_stock_analysis_data(ticker: str) -> str:
             
             price_trend = {
                 "Period": "Last 5 Years",
-                "Start Price": round(start_price, 2),
-                "Current Price": round(curr_price, 2),
-                "5-Year Return": f"{total_return:.2f}%",
-                "High (5y)": round(history['High'].max(), 2),
-                "Low (5y)": round(history['Low'].min(), 2)
+                "Start": round(start_price, 2),
+                "Current": round(curr_price, 2),
+                "Return": f"{total_return:.2f}%",
+                "High": round(history['High'].max(), 2),
+                "Low": round(history['Low'].min(), 2)
             }
 
-        # 2. Financial Statements Helper (使用標準 to_markdown)
+        # 2. Financial Statements Helper (改用 to_string + east_asian_width)
         def format_financials(df, key_metrics):
             if df is None or df.empty:
                 return "Data not available"
@@ -70,56 +71,45 @@ def get_stock_analysis_data(ticker: str) -> str:
                 return "Key metrics not found"
             
             selected = df.loc[existing]
-            # 欄位轉為年份字串
+            # 欄位轉為年份
             selected.columns = [col.strftime('%Y') if hasattr(col, 'strftime') else str(col) for col in selected.columns]
             
-            # 直接使用 tabulate (因為你修好了)
-            return selected.to_markdown()
+            # 數值格式化
+            for col in selected.columns:
+                selected[col] = selected[col].apply(lambda x: fmt_num(x) if isinstance(x, (int, float)) else x)
+            
+            # --- 這裡改用 to_string()，配合最上面的 pd.set_option，中文就會對齊了 ---
+            return selected.to_string()
 
-        # A. Income Statement (損益表) - 補上 Operating Income
-        income_metrics = [
-            "Total Revenue", 
-            "Gross Profit", 
-            "Operating Income", # 用於計算營益率趨勢
-            "Net Income", 
-            "Diluted EPS"
-        ]
+        # A. Income Statement
+        income_metrics = ["Total Revenue", "Gross Profit", "Operating Income", "Net Income", "Diluted EPS"]
         income_str = format_financials(stock.financials, income_metrics)
 
-        # B. Balance Sheet (資產負債表) - 補上 Stockholders Equity
-        balance_metrics = [
-            "Stockholders Equity", # 用於計算 ROE 趨勢
-            "Total Assets", 
-            "Total Debt"
-        ]
+        # B. Balance Sheet
+        balance_metrics = ["Stockholders Equity", "Total Assets", "Total Debt"]
         balance_str = format_financials(stock.balance_sheet, balance_metrics)
 
-        # ==========================================
-        # FINAL OUTPUT CONSTRUCTION
-        # ==========================================
         return f"""
         REPORT FOR: {ticker}
         
-        --- 1. REAL-TIME VALUATION ---
+        --- 1. VALUATION ---
         {valuation}
         
-        --- 2. ANALYST ESTIMATES ---
+        --- 2. ANALYST ---
         {estimates}
         
-        --- 3. PRICE PERFORMANCE (5-Year) ---
+        --- 3. PRICE (5y) ---
         {price_trend}
         
-        --- 4. INCOME STATEMENT HISTORY ---
-        (Key for Operating Margin Trend: Operating Income / Total Revenue)
+        --- 4. INCOME TRENDS ---
         {income_str}
         
-        --- 5. BALANCE SHEET HISTORY ---
-        (Key for ROE Trend: Net Income / Stockholders Equity)
+        --- 5. BALANCE SHEET ---
         {balance_str}
         
-        --- 6. RECENT PRICE DATA ---
+        --- 6. RECENT DATA ---
         {history[['Close', 'Volume']].tail(5).to_string()}
         """
 
     except Exception as e:
-        return f"Error fetching data for {ticker}: {str(e)}"
+        return f"Error: {str(e)}"
