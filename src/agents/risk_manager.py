@@ -4,12 +4,50 @@ from ..utils import get_llm
 
 def risk_manager_node(state: AgentState):
     """
-    Risk Manager that assesses risks based on data and news analysis.
+    Risk Manager that assesses risks based on data and news analysis,
+    adapting to the user's investment style.
     """
     llm = get_llm(temperature=0)
+
+    # 1. 取得投資風格 (預設為 Balanced)
+    style = state.get("investment_style", "Balanced")
     
-    system_prompt = """You are a Chief Risk Officer at a major investment fund.
-    Your job is to play "Devil's Advocate" and identify the downside risks that others might miss, **specifically regarding the user's question**.
+    # 2. 定義不同風格的「性格指令」
+    style_instructions = {
+        "Conservative": """
+        **CURRENT MODE: CONSERVATIVE (保守型)**
+        - **Primary Goal**: Capital Preservation (本金安全).
+        - **Mindset**: Be extremely skeptical. Assume the worst-case scenario is likely.
+        - **Criteria**: Heavily penalize high valuations (high P/E), unproven technology, or high debt.
+        - **Advice**: If there is any significant doubt, recommend avoiding the stock. "Better safe than sorry."
+        """,
+        
+        "Aggressive": """
+        **CURRENT MODE: AGGRESSIVE (積極型)**
+        - **Primary Goal**: High Growth Potential (高成長潛力).
+        - **Mindset**: Tolerate volatility. Focus only on "Thesis Breakers" (risks that permanently destroy value).
+        - **Criteria**: Don't worry about standard high valuations if growth supports it. Focus on competitive threats or regulatory bans.
+        - **Advice**: Highlight risks that would kill the growth story, but ignore short-term market noise.
+        """,
+        
+        "Balanced": """
+        **CURRENT MODE: BALANCED (穩健型)**
+        - **Primary Goal**: Risk-Adjusted Returns (風險調整後回報).
+        - **Mindset**: Rational "Devil's Advocate". Weigh upside vs. downside.
+        - **Criteria**: look for structural risks that the market is ignoring.
+        """
+    }
+
+    # 取得對應的指令，若無則回退到 Balanced
+    specific_instruction = style_instructions.get(style, style_instructions["Balanced"])
+
+    # 3. 組合 System Prompt (f-string 在字串裡面直接填入變數)
+    system_prompt = f"""You are a Chief Risk Officer. Your goal is to identify downside risks, but you must strictly adhere to the user's chosen Investment Style: **{style}**.
+
+    {specific_instruction}
+
+    Your Task:
+    Based on the **Risk Profile** defined above, analyze the input data and act as a "Devil's Advocate" *within that specific context*, **specifically regarding the user's question**.
     
     Input:
     - User Query: The specific question or hypothesis the user has.

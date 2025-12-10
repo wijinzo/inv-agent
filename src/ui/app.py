@@ -4,7 +4,10 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import re
+import os
+import json
 
+# 1. 設定 & 樣式
 # Page config
 st.set_page_config(
     page_title="AI Investment Analyst",
@@ -16,6 +19,7 @@ st.set_page_config(
 # 簡單保留整體深色風格（但不再用 card 的 HTML）
 st.markdown("""
     <style>
+    /* 1. 全域背景設定 */
     .stApp {
         background-color: #202124;
         color: #e8eaed;
@@ -24,19 +28,97 @@ st.markdown("""
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
+    
+    /* 2. 輸入框 (Text Area) Google 風格化 */
     .stTextArea textarea {
         background-color: #303134;
-        color: #e8eaed;
-        border: 1px solid #3c4043;
-        border-radius: 8px;
+        color: #e8eaed;         
+        caret-color: #ffffff;   /* 游標純白 */
+        font-size: 16px;        
+        border: 1px solid #5f6368; 
+        border-radius: 8px;        
+        padding: 12px 15px;       
     }
+    .stTextArea textarea:focus {
+        border-color: #8ab4f8 !important; 
+        box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.3); 
+    }
+    
+    /* 3. 輸入框與選單的標題 (Label) 顏色 */
+    .stTextArea label p, 
+    .stSelectbox label p {
+        color: #ffffff !important; /* 純白標題 */
+        font-weight: 500;
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+    }
+
+    /* 4. 輸入框提示文字 (Placeholder) */
+    .stTextArea textarea::placeholder {
+        color: #9aa0a6 !important; 
+        opacity: 1;
+    }
+    
+    /* --------------------------------------------------------- */
+    /* --- 新增修改區域 --- */
+    /* --------------------------------------------------------- */
+
+    /* 5. 市場儀表板選項 (Radio Buttons) 文字顏色 */
+    /* 針對 st.radio 的選項文字進行設定 */
+    .stRadio div[role="radiogroup"] p {
+        color: #ffffff !important; /* 強制變白 */
+        font-size: 1rem;
+    }
+
+    /* 6. AI 投資報告分頁 (Tabs) 選項文字顏色 */
+    /* 設定 "未被選擇" 的 Tab 文字顏色 */
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="false"] div[data-testid="stMarkdownContainer"] p {
+        color: #ffffff !important; /* 未選中時：純白 */
+        opacity: 0.7;              /* 稍微加一點透明度區分，若要全亮可改為 1 */
+    }
+
+    /* 設定 "已被選擇" 的 Tab 文字顏色 (保持白色或亮色) */
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] div[data-testid="stMarkdownContainer"] p {
+        color: #ffffff !important; /* 選中時：純白 */
+        font-weight: bold;         /* 加粗表示選中 */
+    }
+
+    /* 調整 Tab 整體字體大小 */
+    .stTabs [data-baseweb="tab-list"] button p {
+        font-size: 1.1rem;
+    }
+
+    /* 7. Selectbox (下拉選單) 樣式維持 */
+    .stSelectbox div[data-baseweb="select"] > div {
+        background-color: #303134 !important;
+        color: #ffffff !important;
+        border-color: #5f6368 !important;
+    }
+    
     </style>
     """, unsafe_allow_html=True)
+
+# 2. 開發模式與檔案讀取
+# 設定為 True 以讀取本地 JSON 檔案，False 則呼叫 API
+USE_MOCK_DATA = False 
+MOCK_FILE_PATH = "real_data_snapshot.json" # 請確保檔案名稱正確
+
+def get_mock_data():
+    """從本地檔案讀取 JSON 快照"""
+    if os.path.exists(MOCK_FILE_PATH):
+        try:
+            with open(MOCK_FILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            st.error(f"檔案格式錯誤：無法解析 {MOCK_FILE_PATH}")
+            return None
+    else:
+        st.error(f"找不到檔案：{MOCK_FILE_PATH} (請確認檔案位於正確路徑)")
+        return None
 
 # ---------------------------------------------------------
 # Helper: 內容抽取 + 標題偵測 + Markdown 渲染
 # ---------------------------------------------------------
-
 def extract_text_from_content(content):
     """兼容字串 / LangChain content=[{'type':'text','text':...}] 結構."""
     if isinstance(content, str):
@@ -260,25 +342,74 @@ def format_large_number(num):
 
 st.title("🤖 AI 投資分析助理")
 
+if USE_MOCK_DATA:
+    st.caption(f"🛠️ 開發模式: 讀取本地檔案 `{MOCK_FILE_PATH}`")
+
 query = st.text_area(
     "請輸入您的投資問題或感興趣的股票：",
     placeholder="例如：分析台積電 (TSM) 和輝達 (NVDA) 的近期表現與風險...",
     height=100
 )
 
-if st.button("🚀 開始分析", type="primary"):
+# --- 新增功能：投資風格選擇與按鈕排版 ---
+col_options, col_btn = st.columns([1, 4], gap="medium")
+
+with col_options:
+    style_display = st.selectbox(
+        "選擇投資風格",
+        options=["穩健型 (Balanced)", "保守型 (Conservative)", "積極型 (Aggressive)"],
+        index=0, # 預設穩健型
+        help="這將影響風險評估員的標準與報告的語氣"
+    )
+
+# 將顯示名稱轉換為後端參數
+style_map = {
+    "穩健型 (Balanced)": "Balanced",
+    "保守型 (Conservative)": "Conservative",
+    "積極型 (Aggressive)": "Aggressive"
+}
+selected_style = style_map[style_display]
+
+# 按鈕邏輯 (透過 columns 排版後，將按鈕放在右側，這裡使用 vertical_alignment="bottom" 的效果通常需要 Streamlit 1.31+，若舊版可忽略)
+with col_btn:
+    # 為了讓按鈕跟左邊的選單對齊，可以加一點空白 (視版本而定，新版可用 vertical_alignment)
+    st.write("") 
+    st.write("") 
+    start_analysis = st.button("🚀 開始分析", type="primary")
+
+# ---------------------------------------
+
+if start_analysis:
     if not query:
         st.warning("請輸入問題")
     else:
-        with st.spinner("代理人團隊正在進行深度研究..."):
+        # 在 spinner 顯示當前的風格，增加互動感
+        with st.spinner(f"代理人團隊正在以「{style_display}」進行深度研究..."):
             try:
-                response = requests.post("http://localhost:8000/research", json={"query": query})
-                if response.status_code == 200:
-                    st.session_state.research_result = response.json()
+                if USE_MOCK_DATA:
+                    # 讀取本地檔案
+                    import time
+                    time.sleep(0.5) 
+                    mock_data = get_mock_data()
+                    
+                    if mock_data:
+                        st.session_state.research_result = mock_data
+                        st.success("測試資料載入完成！(注意：Mock 模式下不會動態改變風格結果)")
                 else:
-                    st.error(f"API Error: {response.text}")
+                    # --- 將 style 參數加入 payload ---
+                    payload = {
+                        "query": query, 
+                        "style": selected_style 
+                    }
+                    response = requests.post("http://localhost:8000/research", json=payload)
+                    # --------------------------------------
+                    
+                    if response.status_code == 200:
+                        st.session_state.research_result = response.json()
+                    else:
+                        st.error(f"API Error: {response.text}")
             except Exception as e:
-                st.error(f"Connection Error: {str(e)}")
+                st.error(f"Error: {str(e)}")
 
 if 'research_result' in st.session_state:
     result = st.session_state.research_result

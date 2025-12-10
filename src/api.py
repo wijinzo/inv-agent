@@ -9,6 +9,7 @@ app = FastAPI(title="Investment Agent API")
 
 class ResearchRequest(BaseModel):
     query: str
+    style: str = "Balanced"  # 新增風格參數，預設為穩健型
 
 @app.post("/research")
 async def research(request: ResearchRequest):
@@ -17,6 +18,7 @@ async def research(request: ResearchRequest):
         # Initialize state with just the query, other fields will be populated by agents
         initial_state = {
             "query": request.query,
+            "investment_style": request.style,  # <--- 關鍵修改：將參數傳入 State
             "tickers": [],
             "data_analysis": None,
             "news_analysis": None,
