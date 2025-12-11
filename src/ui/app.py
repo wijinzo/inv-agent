@@ -353,31 +353,44 @@ def plot_stock_chart(history, ticker, chart_type='line'):
     if history.empty:
         return go.Figure()
 
+    # 1. 準備數據
     start_price = history['Close'].iloc[0]
     end_price = history['Close'].iloc[-1]
-    # 決定顏色 (用於連線圖，或 K 棒的線條顏色)
+    
+    # 決定線條顏色 (綠漲紅跌)
     line_color = "#81c995" if end_price >= start_price else "#f28b82" 
     
+    # --- [修改重點] 決定 Y 軸範圍 (非對稱留白，避免標籤被切掉) ---
     min_price = history['Low'].min()
     max_price = history['High'].max()
-    padding = (max_price - min_price) * 0.05 if max_price != min_price else max_price * 0.01
-    y_range = [min_price - padding, max_price + padding]
+    price_range = max_price - min_price
 
+    if price_range > 0:
+        # 上方留更多空間給 "最高點" 標註 (因為有 ay=-40 的向上偏移)
+        # 將比例從 0.1 提高到 0.3 (30%)
+        top_padding = price_range * 0.3  
+        # 下方留白也稍微增加到 15%
+        bottom_padding = price_range * 0.15 
+    else:
+        # 極端情況：這段時間價格完全沒變
+        top_padding = max_price * 0.05
+        bottom_padding = max_price * 0.05
+
+    y_range = [min_price - bottom_padding, max_price + top_padding]
+    # ---------------------------------------------------------
+
+    # X 軸時間格式邏輯
     time_diff = history.index[-1] - history.index[0]
     if time_diff <= timedelta(days=1):
-        date_format = "%H:%M"
-        hover_format = "%H:%M"
+        date_format = "%H:%M"; hover_format = "%H:%M"
     elif time_diff <= timedelta(days=365):
-        date_format = "%m/%d"
-        hover_format = "%b %d"
+        date_format = "%m/%d"; hover_format = "%b %d"
     else:
-        date_format = "%Y/%m"
-        hover_format = "%b %Y"
+        date_format = "%Y/%m"; hover_format = "%b %Y"
         
+    # 自定義 X 軸刻度
     num_ticks = 7
     if len(history) > num_ticks:
-        # NOTE: numpy is required for this logic
-        # import numpy as np
         tick_indices = np.linspace(0, len(history) - 1, num=num_ticks, dtype=int)
         tick_vals = [history.index[i] for i in tick_indices]
         tick_text = [history.index[i].strftime(date_format) for i in tick_indices]
@@ -387,23 +400,25 @@ def plot_stock_chart(history, ticker, chart_type='line'):
 
     fig = go.Figure()
     
+    # 2. 繪製圖表 (Candlestick 或 Line)
     if chart_type == 'candlestick':
-        # Candlestick 繪圖邏輯
         fig.add_trace(go.Candlestick(
             x=history.index,
-            open=history['Open'],
-            high=history['High'],
-            low=history['Low'],
-            close=history['Close'],
+            open=history['Open'], high=history['High'],
+            low=history['Low'], close=history['Close'],
             name=ticker,
-            increasing=dict(line=dict(color='#81c995', width=1)), # Green line
-            decreasing=dict(line=dict(color='#f28b82', width=1)), # Red line
+            increasing=dict(line=dict(color='#81c995', width=1)),
+            decreasing=dict(line=dict(color='#f28b82', width=1)),
             hovertemplate="%{x|%b %d}<br>開: %{open:.2f}<br>高: %{high:.2f}<br>低: %{low:.2f}<br>收: %{close:.2f}<extra></extra>"
         ))
-        # 移除 Candlestick 預設的範圍滑塊 (Range Slider)
-        fig.update_layout(xaxis_rangeslider_visible=False) 
-    else: # 'line' chart (default) 
-        # 原有的連線圖繪圖邏輯
+        fig.update_layout(xaxis_rangeslider_visible=False)
+        
+        high_idx = history['High'].idxmax()
+        high_val = history['High'].max()
+        low_idx = history['Low'].idxmin()
+        low_val = history['Low'].min()
+        
+    else: # 'line' chart
         fig.add_trace(go.Scatter(
             x=history.index, 
             y=history['Close'],
@@ -414,32 +429,70 @@ def plot_stock_chart(history, ticker, chart_type='line'):
             name=ticker,
             hovertemplate=f"%{{x|{hover_format}}}<br>Price: %{{y:.2f}}<extra></extra>"
         ))
+        
+        high_idx = history['Close'].idxmax()
+        high_val = history['Close'].max()
+        low_idx = history['Close'].idxmin()
+        low_val = history['Close'].min()
+
+    # 3. 添加標註 (Annotations)
+    annotations = []
+
+    # A. 最高點標註
+    annotations.append(dict(
+        x=high_idx, y=high_val,
+        xref="x", yref="y",
+        text=f"最高: {high_val:.2f}",
+        showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=1,
+        arrowcolor="#e8eaed", ax=0, ay=-40, # 箭頭向上偏移 40px
+        font=dict(color="#e8eaed", size=11),
+        bgcolor="rgba(32, 33, 36, 0.7)",
+        bordercolor="#5f6368", borderwidth=1, borderpad=4
+    ))
+
+    # B. 最低點標註
+    annotations.append(dict(
+        x=low_idx, y=low_val,
+        xref="x", yref="y",
+        text=f"最低: {low_val:.2f}",
+        showarrow=True, arrowhead=2, arrowsize=1, arrowwidth=1,
+        arrowcolor="#e8eaed", ax=0, ay=40, # 箭頭向下偏移 40px
+        font=dict(color="#e8eaed", size=11),
+        bgcolor="rgba(32, 33, 36, 0.7)",
+        bordercolor="#5f6368", borderwidth=1, borderpad=4
+    ))
+    
+    # C. 最新收盤價
+    annotations.append(dict(
+        x=history.index[-1], y=history['Close'].iloc[-1],
+        xref="x", yref="y",
+        text=f"現價: {history['Close'].iloc[-1]:.2f}",
+        showarrow=True, arrowhead=1,
+        arrowcolor=line_color,
+        ax=20, ay=0,
+        xanchor="left",
+        font=dict(color=line_color, size=12, weight="bold"),
+        bgcolor="rgba(32, 33, 36, 0.8)"
+    ))
 
     fig.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
         xaxis=dict(
-            type='category',
-            showgrid=False, 
-            showticklabels=True,
-            linecolor='#3c4043',
-            tickfont=dict(color='#9aa0a6'),
-            tickmode='array',
-            tickvals=tick_vals,
-            ticktext=tick_text
+            type='category', showgrid=False, showticklabels=True,
+            linecolor='#3c4043', tickfont=dict(color='#9aa0a6'),
+            tickmode='array', tickvals=tick_vals, ticktext=tick_text
         ),
         yaxis=dict(
-            showgrid=True, 
-            gridcolor='#3c4043',
-            showticklabels=True,
-            tickfont=dict(color='#9aa0a6'),
-            side='right',
-            range=y_range
+            showgrid=True, gridcolor='#3c4043', showticklabels=True,
+            tickfont=dict(color='#9aa0a6'), side='right',
+            range=y_range # 使用新的 range
         ),
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         height=350,
         hovermode="x unified",
-        showlegend=False
+        showlegend=False,
+        annotations=annotations
     )
     return fig
 
@@ -793,159 +846,215 @@ if 'research_result' in st.session_state:
     result = st.session_state.research_result
     tickers = result.get("tickers", [])
     
-    # 確保有股票代號才能顯示儀表板和技術分析圖
+    # --- 股票選擇器 (若有多檔股票) ---
     if tickers:
         selected_ticker = tickers[0]
         if len(tickers) > 1:
             st.markdown("---")
             selected_ticker = st.radio("選擇股票", tickers, horizontal=True, label_visibility="collapsed")
     else:
-        # 如果沒有識別出股票代號，則無法繪圖，但仍可顯示報告
         selected_ticker = None
 
-
-    # 1. Dashboard (邏輯現在直接使用 sidebar 的變數)
-    st.markdown("---")
-    if selected_ticker:
-        st.subheader("📈 市場儀表板")
-        
-        stock = yf.Ticker(selected_ticker)
-        info = stock.info
-        
-        if info:
-            st.markdown(
-                f"<div style='color: #9aa0a6; font-size: 14px; margin-bottom: 5px;'>市場概況 > {info.get('longName', selected_ticker)}</div>",
-                unsafe_allow_html=True
-            )
-            
-            # 使用 Sidebar 的 selected_period_code
-            _, history = get_stock_data(selected_ticker, period=selected_period_code)
-            current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-            
-            if history is not None and not history.empty:
-                if selected_period_code == "1d":
-                    start_price = info.get('previousClose', history['Open'].iloc[0])
-                    end_price = history['Close'].iloc[-1]
-                    if info.get('currentPrice'): end_price = info.get('currentPrice')
-                else:
-                    start_price = history['Close'].iloc[0]
-                    end_price = history['Close'].iloc[-1]
-                change = end_price - start_price
-                change_pct = (change / start_price) * 100
-            else:
-                change = 0; change_pct = 0
-                
-            color_class = "#81c995" if change >= 0 else "#f28b82"
-            sign = "+" if change >= 0 else ""
-            period_text = "今天" if selected_period_code == "1d" else f"過去 {selected_period_label}"
-            
-            st.markdown(f"""
-                <div style="display: flex; align-items: baseline; gap: 10px; margin-top: -10px;">
-                    <span style="font-size: 36px; font-weight: 400; color: #e8eaed;">{current_price:.2f}</span>
-                    <span style="font-size: 14px; color: #9aa0a6;">{info.get('currency', 'USD')}</span>
-                    <span style="font-size: 16px; color: {color_class}; font-weight: 500;">
-                        {sign}{change:.2f} ({change_pct:.2f}%) {sign if change >=0 else '↓'} {period_text}
-                    </span>
-                </div>
-                <div style="color: #9aa0a6; font-size: 12px; margin-bottom: 20px;">
-                    已收盤 • 免責聲明
-                </div>
-            """, unsafe_allow_html=True)
-
-            if history is not None and not history.empty:
-                st.plotly_chart(
-                    # 使用 Sidebar 的 selected_chart_type
-                    plot_stock_chart(history, selected_ticker, chart_type=selected_chart_type),
-                    use_container_width=True,
-                    config={'displayModeBar': False}
-                )
-            else:
-                st.warning("暫無此時段數據")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown(f"**開盤**：{info.get('open', '-')}  \n**最高**：{info.get('dayHigh', '-')}  \n**最低**：{info.get('dayLow', '-')}")
-            with col2:
-                mkt_cap = format_large_number(info.get('marketCap'))
-                pe_ratio = f"{info.get('trailingPE', '-'):.2f}" if info.get('trailingPE') else "-"
-                div_yield_raw = info.get('dividendYield') or info.get('trailingAnnualDividendYield')
-                div_yield = f"{div_yield_raw*100:.2f}%" if div_yield_raw else "-"
-                st.markdown(f"**市值**：{mkt_cap}  \n**本益比**：{pe_ratio}  \n**殖利率**：{div_yield}")
-            with col3:
-                st.markdown(f"**52 週高點**：{info.get('fiftyTwoWeekHigh', '-')}  \n**52 週低點**：{info.get('fiftyTwoWeekLow', '-')}  \n**股利金額**：{info.get('dividendRate', '-')}")
-        else:
-            st.error(f"無法獲取 {selected_ticker} 的數據")
-    else:
-        st.warning("未識別出股票代號，無法顯示市場儀表板。")
-
-
-   # 2. 報告區
-    st.markdown("---")
-    st.subheader("📝 AI 投資報告")
+    # --- 獲取基礎數據 ---
+    stock_info = {}
+    history_1mo = None
     
-    t1, t2_tab, t3_tab, t4_tab, t5_tab, t6_tab, t7_tab, t8_tab, t9_tab = st.tabs([
-        "最終建議", "數據分析", "新聞摘要", "技術策略總結", 
-        "技術 - 趨勢", "技術 - 型態", "技術 - 指標", "風險評估", "新聞來源"
+    if selected_ticker:
+        stock = yf.Ticker(selected_ticker)
+        stock_info = stock.info
+        # 預設抓取 dashboard 需要的數據 (使用 Sidebar 設定的區間)
+        _, history_1mo = get_stock_data(selected_ticker, period=selected_period_code)
+
+    # =========================================================
+    #  A. 報告標題與市場儀表板 (置頂區域)
+    # =========================================================
+    st.markdown("---")
+    st.subheader(f"📝 AI 投資報告 - {selected_ticker if selected_ticker else ''}")
+
+    # --- 市場數據儀表板 (Global Dashboard) ---
+    if selected_ticker and stock_info:
+        
+        # 1. 計算漲跌幅與顏色
+        current_price = stock_info.get('currentPrice', stock_info.get('regularMarketPrice', 0))
+        if history_1mo is not None and not history_1mo.empty:
+            if selected_period_code == "1d":
+                start_p = stock_info.get('previousClose', history_1mo['Open'].iloc[0])
+                end_p = history_1mo['Close'].iloc[-1]
+                if stock_info.get('currentPrice'): end_p = stock_info.get('currentPrice')
+            else:
+                start_p = history_1mo['Close'].iloc[0]
+                end_p = history_1mo['Close'].iloc[-1]
+            change = end_p - start_p
+            change_pct = (change / start_p) * 100
+        else:
+            change = 0; change_pct = 0
+        
+        color_class = "#81c995" if change >= 0 else "#f28b82"
+        sign = "+" if change >= 0 else ""
+        period_text = "今天" if selected_period_code == "1d" else f"過去 {selected_period_label}"
+
+        # 2. 顯示大標題股價 (HTML)
+        st.markdown(f"""
+            <div style="display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 32px; font-weight: 600; color: #e8eaed;">{current_price:.2f}</span>
+                <span style="font-size: 14px; color: #9aa0a6;">{stock_info.get('currency', 'USD')}</span>
+                <span style="font-size: 16px; color: {color_class}; font-weight: 500;">
+                    {sign}{change:.2f} ({change_pct:.2f}%) {sign if change >=0 else '↓'} {period_text}
+                </span>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # 3. 繪製股價走勢圖
+        if history_1mo is not None and not history_1mo.empty:
+            fig_main = plot_stock_chart(history_1mo, selected_ticker, chart_type=selected_chart_type)
+            st.plotly_chart(fig_main, use_container_width=True, config={'displayModeBar': False})
+        else:
+            st.warning("暫無此時段股價數據")
+
+        # 4. 三欄核心數據
+        st.markdown("<br>", unsafe_allow_html=True) 
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            mkt_cap = format_large_number(stock_info.get('marketCap'))
+            st.metric("市值 (Market Cap)", mkt_cap)
+            st.metric("開盤 (Open)", f"{stock_info.get('open', '-'):.2f}" if isinstance(stock_info.get('open'), (int, float)) else "-")
+        with c2:
+            pe = stock_info.get('trailingPE')
+            pe_str = f"{pe:.2f}" if pe else "-"
+            st.metric("本益比 (P/E)", pe_str)
+            high_52 = stock_info.get('fiftyTwoWeekHigh')
+            st.metric("52週高點", f"{high_52:.2f}" if high_52 else "-")
+        with c3:
+            dy = stock_info.get('dividendYield') or stock_info.get('trailingAnnualDividendYield')
+            dy_str = f"{dy*100:.2f}%" if dy else "-"
+            st.metric("殖利率 (Yield)", dy_str)
+            low_52 = stock_info.get('fiftyTwoWeekLow')
+            st.metric("52週低點", f"{low_52:.2f}" if low_52 else "-")
+
+    elif not selected_ticker:
+        st.info("請先選擇股票以查看市場數據。")
+    
+    st.markdown("---")
+
+    # =========================================================
+    #  B. 詳細分析 Tabs (位於儀表板下方)
+    # =========================================================
+    
+    # 定義 4 個核心分頁
+    tab_summary, tab_tech, tab_fund, tab_raw = st.tabs([
+        "📊 總覽 (Summary)", 
+        "📈 技術面 (Technical)", 
+        "📰 基本面 (Fundamental)", 
+        "🔗 原始資料 (Raw)"
     ])
     
-    with t1: render_sections_markdown(result.get("final_report", ""))
-    with t2_tab: render_sections_markdown(result.get("data_analysis", ""))
-    with t3_tab: render_sections_markdown(result.get("news_analysis", ""))
-    with t4_tab: render_sections_markdown(result.get("technical_strategy", "無技術策略總結。"))
+    # ---------------------------------------------------------
+    # Tab 1: 總覽 (Summary) - 只保留建議與風險
+    # ---------------------------------------------------------
+    with tab_summary:
+        # 1. 最終建議
+        st.markdown("### 💡 最終投資建議")
+        render_sections_markdown(result.get("final_report", ""))
         
-    with t5_tab:
-        if selected_ticker:
-            history_full = get_ta_base_data(selected_ticker)
-            if not history_full.empty:
-                one_year_ago = datetime.now() - timedelta(days=365)
-                history_plot = history_full[history_full.index >= one_year_ago.strftime('%Y-%m-%d')]
-                if history_plot.empty: history_plot = history_full
-                ma20 = calculate_sma(history_full, 20)
-                ma50 = calculate_sma(history_full, 50)
-                fig = plot_technical_analysis(history_plot, selected_ticker, price_lines=[(ma20, "MA20", "#4285F4"), (ma50, "MA50", "#E93E33")], title="股價趨勢分析 (MA20/MA50)")
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        render_sections_markdown(result.get("trend_analysis", "無趨勢分析。"))
+        st.markdown("---")
 
-    with t6_tab:
-        if selected_ticker:
-            history_full = get_ta_base_data(selected_ticker)
-            if not history_full.empty:
-                one_year_ago = datetime.now() - timedelta(days=365)
-                history_plot = history_full[history_full.index >= one_year_ago.strftime('%Y-%m-%d')]
-                if history_plot.empty: history_plot = history_full
-                ma50 = calculate_sma(history_full, 50)
-                fig = plot_technical_analysis(history_plot, selected_ticker, price_lines=[(ma50, "MA50", "#FF5722")], title="股價型態觀察")
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        render_sections_markdown(result.get("pattern_analysis", "無型態分析。"))
-        
-    with t7_tab:
-        if selected_ticker:
-            history_full = get_ta_base_data(selected_ticker)
-            if not history_full.empty:
-                one_year_ago = datetime.now() - timedelta(days=365)
-                history_plot = history_full[history_full.index >= one_year_ago.strftime('%Y-%m-%d')]
-                if history_plot.empty: history_plot = history_full
-                rsi14 = calculate_rsi(history_full, window=14)
-                mtm10 = calculate_mtm(history_full, window=10)
-                indicator_list = [{"series": rsi14, "name": "RSI (14)", "color": "#FFC107", "type": "RSI"}, {"series": mtm10, "name": "MTM (10)", "color": "#4285F4", "type": "MTM"}]
-                fig = plot_technical_analysis(history_plot, selected_ticker, indicator_list=indicator_list, title="動能指標分析 (RSI 14 & MTM 10)")
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-        render_sections_markdown(result.get("indicator_analysis", "無指標分析。"))
-
-    with t8_tab:
-        raw_risk = extract_text_from_content(result.get("risk_assessment", "無風險評估"))
-        raw_risk = raw_risk.replace('作為首席風險官，我的職責是扮演「魔鬼代言人」，專注於識別潛在的下行風險，特別是那些可能被市場普遍樂觀情緒所忽略的方面。針對您「最近微軟可以買嗎」的提問，我的評估如下：', '')
-        if "作為首席風險官" in raw_risk:
-            parts = raw_risk.split('\n\n', 1)
-            if len(parts) > 1 and "作為首席風險官" in parts[0]: raw_risk = parts[1]
+        # 2. 風險評估
+        st.markdown("### ⚠️ 風險評估")
+        raw_risk = extract_text_from_content(result.get("risk_assessment", "無風險評估內容"))
+        garbage_phrases = [
+            "作為首席風險官，我的職責是扮演「魔鬼代言人」，專注於識別潛在的下行風險，特別是那些可能被市場普遍樂觀情緒所忽略的方面。針對您「最近微軟可以買嗎」的提問，我的評估如下：",
+            "作為首席風險官，", "身為風險評估員，", "以下是我的風險評估："
+        ]
+        for phrase in garbage_phrases:
+            raw_risk = raw_risk.replace(phrase, "")
+        raw_risk = raw_risk.strip()
         render_sections_markdown(raw_risk)
 
-    with t9_tab:
+    # ---------------------------------------------------------
+    # Tab 2: 技術面 (Technical)
+    # ---------------------------------------------------------
+    with tab_tech:
+        st.info(extract_text_from_content(result.get("technical_strategy", "暫無技術策略總結")))
+        
+        if selected_ticker:
+            history_full = get_ta_base_data(selected_ticker)
+            has_data = not history_full.empty
+            
+            # Expander A: 趨勢
+            with st.expander("🔽 趨勢分析 (Trend Analysis)", expanded=False):
+                if has_data:
+                    ma20 = calculate_sma(history_full, 20)
+                    ma50 = calculate_sma(history_full, 50)
+                    one_year_ago = datetime.now() - timedelta(days=365)
+                    hist_plot = history_full[history_full.index >= one_year_ago.strftime('%Y-%m-%d')]
+                    if hist_plot.empty: hist_plot = history_full
+                    fig_trend = plot_technical_analysis(
+                        hist_plot, selected_ticker, 
+                        price_lines=[(ma20, "MA20", "#4285F4"), (ma50, "MA50", "#E93E33")],
+                        title="趨勢分析 (MA20 / MA50)"
+                    )
+                    st.plotly_chart(fig_trend, use_container_width=True, config={'displayModeBar': False})
+                render_sections_markdown(result.get("trend_analysis", ""))
+
+            # Expander B: 型態
+            with st.expander("▶️ 型態觀察 (Chart Patterns)", expanded=False):
+                if has_data:
+                    ma50 = calculate_sma(history_full, 50)
+                    hist_plot = history_full[history_full.index >= one_year_ago.strftime('%Y-%m-%d')]
+                    if hist_plot.empty: hist_plot = history_full
+                    fig_pattern = plot_technical_analysis(
+                        hist_plot, selected_ticker,
+                        price_lines=[(ma50, "MA50", "#FF5722")],
+                        title="型態觀察 (Price Action)"
+                    )
+                    st.plotly_chart(fig_pattern, use_container_width=True, config={'displayModeBar': False})
+                render_sections_markdown(result.get("pattern_analysis", ""))
+
+            # Expander C: 動能
+            with st.expander("▶️ 動能指標 (Momentum Indicators)", expanded=False):
+                if has_data:
+                    rsi14 = calculate_rsi(history_full, 14)
+                    mtm10 = calculate_mtm(history_full, 10)
+                    hist_plot = history_full[history_full.index >= one_year_ago.strftime('%Y-%m-%d')]
+                    if hist_plot.empty: hist_plot = history_full
+                    indicator_list = [
+                        {"series": rsi14, "name": "RSI (14)", "color": "#FFC107", "type": "RSI"},
+                        {"series": mtm10, "name": "MTM (10)", "color": "#4285F4", "type": "MTM"}
+                    ]
+                    fig_ind = plot_technical_analysis(
+                        hist_plot, selected_ticker,
+                        indicator_list=indicator_list,
+                        title="動能指標 (RSI & MTM)"
+                    )
+                    st.plotly_chart(fig_ind, use_container_width=True, config={'displayModeBar': False})
+                render_sections_markdown(result.get("indicator_analysis", ""))
+        else:
+            st.warning("未識別股票代號，無法顯示技術圖表。")
+
+    # ---------------------------------------------------------
+    # Tab 3: 基本面與新聞 (Fundamental)
+    # ---------------------------------------------------------
+    with tab_fund:
+        c_news, c_data = st.columns([1, 1])
+        with c_news:
+            st.markdown("### 📰 新聞摘要 (Narrative)")
+            render_sections_markdown(result.get("news_analysis", "暫無新聞分析"))
+        with c_data:
+            st.markdown("### 📊 數據分析 (Numbers)")
+            render_sections_markdown(result.get("data_analysis", "暫無數據分析"))
+
+    # ---------------------------------------------------------
+    # Tab 4: 原始資料 (Raw)
+    # ---------------------------------------------------------
+    with tab_raw:
+        st.markdown("### 🔗 參考來源")
         news_content = extract_text_from_content(result.get("news_analysis", ""))
         links = re.findall(r'\[([^\]]+)\]\((http[^\)]+)\)', news_content)
-        st.markdown("**新聞來源列表**")
         if links:
-            for title, url in links: st.markdown(f"- [{title}]({url})")
+            for title, url in links:
+                st.markdown(f"- [{title}]({url})")
         else:
-            st.info("報告中未檢測到明確的新聞連結，請參考「新聞摘要」分頁中的內容。")
+            st.caption("報告中未檢測到明確的新聞連結。")
+        st.markdown("---")
+        with st.expander("查看原始 JSON 回應 (Debug)"):
+            st.json(result)
