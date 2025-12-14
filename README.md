@@ -127,21 +127,23 @@ uv run python -m src.main "Analyze NVDA and AMD"
 uv run python -m src.main "What are the risks of investing in TSLA right now?"
 ```
 
-### Method 2: Web UI (Streamlit)
-For a rich, interactive experience with charts and formatted reports:
+### Method 2: User Interface
 
-```bash
-uv run streamlit run src/ui/app.py
-```
-Open your browser at `http://localhost:8501`.
-
-### Method 3: REST API
+#### Method 2.1: REST API
 Run the backend API server for integration with other apps:
 
 ```bash
 uv run uvicorn src.api:app --reload
 ```
 API Docs: `http://localhost:8000/docs`
+
+#### Method 2.2: Web UI (Streamlit)
+For a rich, interactive experience with charts and formatted reports:
+
+```bash
+uv run streamlit run src/ui/app.py
+```
+Open your browser at `http://localhost:8501`.
 
 ## 🔧 Customization
 
