@@ -1,7 +1,7 @@
 import sys
 try:
     import duckduckgo_search
-    # Shim ddgs for langchain_community
+    # Shim ddgs for compatibility with langchain_community search tools
     if "ddgs" not in sys.modules:
         sys.modules["ddgs"] = duckduckgo_search
 except ImportError:
@@ -13,10 +13,15 @@ from langchain_community.tools import DuckDuckGoSearchResults
 @tool
 def search_news(query: str) -> str:
     """
-    Searches for news about a company using Yahoo Finance.
-    Input should be a stock ticker symbol (e.g., 'TSM', 'NVDA', '2330.TW').
+    Searches for news about a company using the Yahoo Finance API.
+    
+    Args:
+        query (str): A stock ticker symbol (e.g., 'TSM', 'NVDA', 'AAPL').
+        
+    Returns:
+        str: A string containing titles, links, and summaries of recent news.
     """
-    # Set User-Agent to avoid 403 errors from Yahoo Finance
+    # Set User-Agent to prevent 403 Forbidden errors when scraping Yahoo Finance
     import os
     import yfinance as yf
     os.environ["USER_AGENT"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -26,14 +31,14 @@ def search_news(query: str) -> str:
         ticker = yf.Ticker(query)
         news = ticker.news
         
-        # Format the results for the LLM
+        # Format news data for the LLM Analyst agents
         formatted_results = ""
         if news:
             for item in news:
                 if not item:
                     continue
-                # Handle nested content structure if present
-                # Use try-except for safety if item is not a dict
+                
+                # Yahoo Finance news items can have varying dictionary structures
                 try:
                     content = item.get('content', item)
                 except AttributeError:
@@ -45,12 +50,13 @@ def search_news(query: str) -> str:
                 
                 title = content.get('title', 'No Title')
                 
-                # Link might be in clickThroughUrl or link
+                # Attempt to extract the URL from nested fields
                 link = content.get('link')
                 if not link and 'clickThroughUrl' in content:
                     click_through = content['clickThroughUrl']
                     if click_through:
                         link = click_through.get('url')
+                
                 if not link:
                     link = 'No Link'
                     
@@ -69,12 +75,20 @@ def search_news(query: str) -> str:
 @tool
 def web_search(query: str) -> str:
     """
-    Performs a general web search using DuckDuckGo.
-    Use this for specific questions, market sentiment, or when company-specific news is insufficient.
-    Input should be a search query string (e.g., 'NVDA supply chain issues', 'TSM vs Intel 3nm').
+    Performs a general web search using the DuckDuckGo engine.
+    
+    Use this for qualitative research, competitive analysis, and identifying market
+    sentiments or specific macro risks not found in ticker-specific news.
+    
+    Args:
+        query (str): The search query string.
+        
+    Returns:
+        str: Aggregated web search results.
     """
     try:
         print(f"DEBUG: Performing web search for '{query}'")
+        # Utilize the 'news' backend to ensure high relevancy for investment analysis
         search = DuckDuckGoSearchResults(backend="news")
         results = search.run(query)
         return results

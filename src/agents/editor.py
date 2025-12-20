@@ -4,14 +4,25 @@ from ..utils import get_llm
 
 def editor_node(state: AgentState):
     """
-    Chief Editor that compiles the final investment memo.
+    Chief Editor node that synthesizes all individual agent reports into a professional memo.
+    
+    This node acts as the final aggregator, applying investment style filters (Conservative, 
+    Aggressive, or Balanced) to ensure the tone, verdict logic, and risk weighting 
+    align with the user's selected strategy.
+    
+    Args:
+        state (AgentState): The current state containing all analysis reports.
+        
+    Returns:
+        dict: A dictionary containing the final 'final_report' in Markdown format.
     """
+    # Initialize the LLM with zero temperature for a stable, professional tone
     llm = get_llm(temperature=0)
     
-    # 1. Get Investment Style (Default to Balanced)
+    # 1. Retrieve the investment style from the state (defaulting to Balanced)
     style = state.get("investment_style", "Balanced")
     
-    # 2. Define Writing Guidelines for different styles
+    # 2. Define style-specific writing guidelines to shape the final narrative
     style_guidelines = {
         "Conservative": """
         **STYLE MODE: CONSERVATIVE (保守型)**
@@ -36,6 +47,7 @@ def editor_node(state: AgentState):
 
     current_guideline = style_guidelines.get(style, style_guidelines["Balanced"])
 
+    # Define the system prompt with structured reporting requirements
     system_prompt = f"""You are the Chief Editor of a prestigious investment research firm (like Goldman Sachs or Morgan Stanley).
     Your goal is to compile a comprehensive "Sell-Side" Investment Report, **specifically addressing the user's question**. (您的目標是編寫一份全面的「賣方」投資報告，特別針對用戶的問題。)
     
@@ -52,49 +64,30 @@ def editor_node(state: AgentState):
     Output:
     - A professional Markdown report in **Traditional Chinese (繁體中文)**.
     - **Style Rules**:
-        1. **Narrative Flow**: Write in full, professional paragraphs. Avoid excessive bullet points. Use bullet points ONLY for lists of data, not for arguments.
-        2. **Verifiable Evidence**: Every claim must be backed by specific data points, dates, or source names. (e.g., Instead of "Growth is strong", say "Revenue grew 20% YoY...").
+        1. **Narrative Flow**: Write in full, professional paragraphs. Avoid excessive bullet points. 
+        2. **Verifiable Evidence**: Every claim must be backed by specific data points, dates, or source names.
         3. **Argumentative**: Don't just summarize; argue a thesis.
         4. **Consistency**: Ensure the Final Verdict aligns with the **{style}** strategy.
     
     Structure:
-    (Do NOT include metadata like Date or Analyst Name)
-
-    1. **Executive Summary (執行摘要)**:
-        - **Direct Answer**: Explicitly answer the user's question from a {style} perspective.
-        - **Rating & Target**: BUY/HOLD/SELL, Target Price $X.XX.
-        - **Verdict**: A concise paragraph explaining the core reasoning suited for a {style} investor.
-    
-    2. **Investment Thesis (投資論點)**:
-        - Write a cohesive narrative explaining the "Bull Case". Why is this a good investment *now*?
-        - Cite specific catalysts and financial metrics to support your argument.
-        - Focus on catalysts that matter to a {style} investor.
-    
-    3. **Valuation & Financials (估值與財務)**:
-        - A narrative analysis of the valuation. Is it cheap relative to peers?
-        - Cite P/E ratios, margins, and growth rates as evidence.
-        
-    4. **Technical Outlook (技術展望)**:
-        - A narrative analysis of the price trend, momentum, and key levels based on the Technical Strategy. Is the chart supportive of the thesis?
-        - Cite MA and RSI findings as evidence.
-    
-    5. **Risk Factors (Bear Case) (風險因素/看空情境)**:
-        - A narrative description of what could go wrong.
-        - Cite the Risk Manager's specific scenarios and scores.
-    
+    1. **Executive Summary (執行摘要)**: Direct Answer, Rating, and core reasoning.
+    2. **Investment Thesis (投資論點)**: The "Bull Case" narrative.
+    3. **Valuation & Financials (估值與財務)**: Analysis of P/E, margins, and peer comparison.
+    4. **Technical Outlook (技術展望)**: Trend and momentum analysis based on MA/RSI.
+    5. **Risk Factors (Bear Case) (風險因素/看空情境)**: Narrative of downside scenarios.
     6. **Conclusion (結論)**: Final recommendation.
     
     Tone: Authoritative, professional, and decisive.
     """
     
-    #刪除 create_agent
-
+    # Extract components from the graph state
     user_query = state.get("query", "No specific query provided.")
     data_analysis = state.get("data_analysis")
     news_analysis = state.get("news_analysis")
     technical_strategy = state.get("technical_strategy")
     risk_assessment = state.get("risk_assessment")
     
+    # Compose the prompt for the editor
     user_message = f"""User Query:
     {user_query}
 
@@ -110,7 +103,6 @@ def editor_node(state: AgentState):
     Risk Assessment:
     {risk_assessment}
 
-
     Please generate the final Investment Memo for a {style} client."""
     
     messages = [
@@ -118,9 +110,9 @@ def editor_node(state: AgentState):
         HumanMessage(content=user_message)
     ]
 
-    # [優化] 改用直接呼叫 LLM (Direct Invoke) 而非 Agent
-    # 原因：Editor 僅負責整合現有資訊，不需要使用外部工具 (Tools)。
-    # 直接呼叫可省去 Agent 的「思考/行動」推理迴圈，減少 Token 消耗並提升回應速度。
+    # Optimization: Direct LLM invocation is used instead of an Agent here.
+    # Since the Editor only synthesizes existing data and doesn't need external tools,
+    # direct invocation is faster and saves tokens by avoiding reasoning loops.
     response = llm.invoke(messages)
     
     return {"final_report": response.content}

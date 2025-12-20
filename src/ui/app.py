@@ -4,15 +4,13 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import re
-# numpy needed for plot helper function's linspace
 import numpy as np
-from plotly.subplots import make_subplots # 新增 Plotly Subplots 導入
+from plotly.subplots import make_subplots
 import os
 import json
-import streamlit.components.v1 as components # 用於執行自動捲動的 JavaScript
+import streamlit.components.v1 as components
 
 # 1. 設定 & 樣式
-# Page config: 修改 initial_sidebar_state 為 expanded 以便展示設定
 st.set_page_config(
     page_title="AI Investment Analyst",
     page_icon="🤖",
@@ -20,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
-# 簡單保留整體深色風格（但不再用 card 的 HTML）
+# 簡單保留整體深色風格
 st.markdown("""
     <style>
     

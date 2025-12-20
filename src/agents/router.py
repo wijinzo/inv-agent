@@ -21,10 +21,22 @@ def submit_routing_instructions(tickers: List[str], data_analyst_instructions: s
 
 def router_node(state: AgentState):
     """
-    Router agent that extracts tickers and generates specific instructions for analysts.
+    Router agent node that extracts tickers and orchestrates task assignments.
+    
+    This agent acts as the gateway of the research workflow, parsing the user's 
+    intent to identify relevant stock symbols and generating tailored, high-precision 
+    instructions for each specialized sub-agent.
+    
+    Args:
+        state (AgentState): The current graph state containing the raw user query.
+        
+    Returns:
+        dict: A dictionary updating the state with tickers and individualized instructions.
     """
+    # Initialize the LLM with zero temperature for reliable extraction and routing
     llm = get_llm(temperature=0)
     
+    # Define the core coordinating persona and task extraction logic
     system_prompt = """You are a Senior Financial Research Lead.
     Your job is to coordinate the research flow by analyzing the user's query and assigning tasks. (您的工作是透過分析用戶的查詢並分配任務來協調研究流程。)
     
@@ -45,29 +57,27 @@ def router_node(state: AgentState):
     You **MUST** call the `submit_routing_instructions` tool to output your decision.
     """
     
-    # Create the agent
+    # Create the ReAct agent with the routing tool
     agent = create_agent(
         model=llm,
         tools=[submit_routing_instructions],
         system_prompt=system_prompt
     )
     
-    # Invoke the agent
+    # Execute routing by passing the raw query to the Research Lead agent
     result = agent.invoke({"messages": [("human", state["query"])]})
     
-    # Extract the tool call from the last message (or the one before if the last is a tool message)
-    # The agent should have called the tool.
-    # We need to find the tool call in the messages.
-    
+    # Extract the tool call to parse the assigned instructions
     messages = result["messages"]
     tool_call = None
     
-    # Iterate backwards to find the tool call
+    # Iterate backwards to find the model's tool call decision
     for msg in reversed(messages):
         if hasattr(msg, "tool_calls") and msg.tool_calls:
             tool_call = msg.tool_calls[0]
             break
             
+    # Process the tool call arguments and update the state
     if tool_call and tool_call["name"] == "submit_routing_instructions":
         args = tool_call["args"]
         return {
@@ -79,7 +89,7 @@ def router_node(state: AgentState):
             "indicator_analyst_instructions": args.get("indicator_analyst_instructions", "")
         }
     
-    # Fallback if no tool call (shouldn't happen with good LLM)
+    # Fallback mechanism to ensure the workflow continues even if the agent fails to use the tool
     default_instruction = state["query"]
     return {
         "tickers": [], 
