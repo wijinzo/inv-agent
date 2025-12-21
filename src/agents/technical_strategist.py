@@ -1,17 +1,25 @@
-# lydd168/investment-agent/investment-agent-22c26258a839f24043bfdc542e6087bed11ba231/src/agents/technical_strategist.py
-
 from langchain.agents import create_agent
 from ..state import AgentState
 from ..utils import get_llm
 
 def technical_strategist_node(state: AgentState):
     """
-    Technical Strategist that synthesizes inputs from Trend, Pattern, and Indicator Analysts 
-    to form a cohesive Technical Outlook and trading recommendation.
+    Technical Strategist node that synthesizes inputs from Trend, Pattern, and Indicator Analysts.
+    
+    This agent consolidates various technical signals into a cohesive outlook and 
+    provides actionable trading recommendations based on the user's specific 
+    investment style (Conservative, Aggressive, or Balanced).
+    
+    Args:
+        state (AgentState): The current graph state containing individual analyst reports.
+        
+    Returns:
+        dict: A dictionary updating the state with the 'technical_strategy' report.
     """
+    # Initialize the LLM with zero temperature for consistent strategic synthesis
     llm = get_llm(temperature=0)
     
-    # New: Get investment style and define rating rules
+    # Retrieve investment style and define style-specific rating logic
     style = state.get("investment_style", "Balanced")
 
     style_rules = {
@@ -34,7 +42,7 @@ def technical_strategist_node(state: AgentState):
     }
     current_rule = style_rules.get(style, style_rules["Balanced"])
 
-    # Modified system_prompt to be in English and include the style rule
+    # Define the system prompt for the strategist persona
     system_prompt = f"""You are a Senior Technical Strategist, responsible for integrating various technical analyses (Trend, Pattern, Indicator) into a coherent and actionable trading view. (您是一位資深技術策略師，負責將各項技術分析整合為一個連貫且具有行動力的交易觀點。)
     Your goal is to provide a clear technical summary for the user's investment decision based on all technical analysis results.
     
@@ -63,18 +71,20 @@ def technical_strategist_node(state: AgentState):
     Start directly with the analysis.
     """
     
-    # Create the agent
+    # Create the ReAct agent (no external tools needed as it synthesizes text inputs)
     agent = create_agent(
         model=llm,
         tools=[],
         system_prompt=system_prompt
     )
     
+    # Extract operational parameters and previous analysis results from the state
     user_query = state.get("query", "No specific query provided.")
     trend_analysis = state.get("trend_analysis", "No trend analysis provided.")
     pattern_analysis = state.get("pattern_analysis", "No pattern analysis provided.")
     indicator_analysis = state.get("indicator_analysis", "No indicator analysis provided.")
     
+    # Construct the synthesis prompt
     user_message = f"""User Query:
 {user_query}
 
@@ -89,8 +99,9 @@ Indicator Analysis:
 
 請根據上述輸入，產生一個技術策略總結報告。"""
     
-    # Invoke the agent
+    # Execute the agent to generate the strategic outlook
     result = agent.invoke({"messages": [("human", user_message)]})
     
+    # Return the synthesized technical strategy to the graph state
     last_message = result["messages"][-1]
     return {"technical_strategy": last_message.content}

@@ -5,12 +5,23 @@ from ..utils import get_llm
 
 def data_analyst_node(state: AgentState):
     """
-    Finance Data Analyst that gathers and analyzes market data using a ReAct agent.
+    Agent node specializing in quantitative financial analysis.
+    
+    This agent uses a ReAct pattern to fetch historical financial data and 
+    performs trend analysis on revenue, earnings, margins, and valuation 
+    metrics, tailored to the user's specific investment style.
+    
+    Args:
+        state (AgentState): The current state of the graph.
+        
+    Returns:
+        dict: A dictionary containing the 'data_analysis' report string.
     """
+    # Initialize the LLM with zero temperature for consistent quantitative results
     llm = get_llm(temperature=0)
     tools = [get_stock_analysis_data]
     
-    # New: Get investment style and define analysis guidelines
+    # Retrieve investment style and determine the corresponding analysis framework
     style = state.get("investment_style", "Balanced")
 
     style_guidelines = {
@@ -34,7 +45,7 @@ def data_analyst_node(state: AgentState):
     }
     current_guideline = style_guidelines.get(style, style_guidelines["Balanced"])
     
-    # Modified system_prompt to be in English and include the style guideline
+    # Define the system prompt for the financial data analyst agent
     system_prompt = f"""You are a Senior Financial Data Analyst at a top-tier investment bank.
     Your goal is to provide a rigorous quantitative analysis of the provided tickers, **specifically addressing the user's question** with a focus on LONG-TERM TRENDS.
     
@@ -44,14 +55,14 @@ def data_analyst_node(state: AgentState):
     1. **Data Retrieval**: Use the `get_stock_analysis_data` tool to fetch 5-year historical data.
     
     2. **Trend & Growth Analysis (Crucial)**:
-       - Do NOT just look at the most recent number. Analyze the trajectory over the past years.
-       - **Revenue & Earnings**: Are they growing? Calculate simple growth rates or CAGR if possible based on the provided table.
-       - **Margins**: Are Gross/Operating margins **expanding** (getting better) or **contracting** (getting worse) over the years?
-       - **Cash Flow**: Is Free Cash Flow positive and growing?
+        - Do NOT just look at the most recent number. Analyze the trajectory over the past years.
+        - **Revenue & Earnings**: Are they growing? Calculate simple growth rates or CAGR if possible based on the provided table.
+        - **Margins**: Are Gross/Operating margins **expanding** (getting better) or **contracting** (getting worse) over the years?
+        - **Cash Flow**: Is Free Cash Flow positive and growing?
     
     3. **Valuation Context**: 
-       - Look at the current valuation metrics (P/E, etc.) in the context of the price performance. 
-       - If the price has risen significantly, is the valuation still justified by earnings growth?
+        - Look at the current valuation metrics (P/E, etc.) in the context of the price performance. 
+        - If the price has risen significantly, is the valuation still justified by earnings growth?
     
     4. **Context-Aware Analysis**: Look for data points that specifically support or refute the user's hypothesis.
     
@@ -71,17 +82,19 @@ def data_analyst_node(state: AgentState):
     If comparing multiple tickers, a comparison table is highly recommended.
     """
 
-    # Create the agent
+    # Initialize the ReAct agent with specific financial tools
     agent = create_agent(
         model=llm,
         tools=tools,
         system_prompt=system_prompt
     )
     
+    # Extract ticker list and user query from current graph state
     tickers = state["tickers"]
     query = state["query"]
     instructions = state.get("data_analyst_instructions", "")
     
+    # Construct the user prompt with specific tickers and lead instructions
     user_message = f"""Analyze the following tickers: {tickers}. 
 
         User's Specific Question: {query}
@@ -90,7 +103,9 @@ def data_analyst_node(state: AgentState):
         {instructions}
         """
         
+    # Execute the agent workflow
     result = agent.invoke({"messages": [("human", user_message)]})
     
+    # Retrieve the final generated analysis content
     last_message = result["messages"][-1]
     return {"data_analysis": last_message.content}

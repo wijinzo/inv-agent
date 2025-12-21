@@ -1,5 +1,3 @@
-# lydd168/investment-agent/investment-agent-22c26258a839f24043bfdc542e6087bed11ba231/src/agents/trend_analyst.py
-
 from langchain.agents import create_agent
 from ..state import AgentState
 from ..tools.technical_tools import get_technical_data
@@ -7,11 +5,23 @@ from ..utils import get_llm
 
 def trend_analyst_node(state: AgentState):
     """
-    Technical Trend Analyst focusing on price direction, moving averages, and key levels.
+    Technical Trend Analyst node focusing on price direction and moving averages.
+    
+    This agent retrieves historical price data and technical indicators to evaluate 
+    the relationship between short-term and medium-term moving averages (SMA_20 vs SMA_50) 
+    and identifies key support and resistance levels.
+    
+    Args:
+        state (AgentState): The current graph state.
+        
+    Returns:
+        dict: A dictionary updating the state with the 'trend_analysis' report.
     """
+    # Initialize the LLM with zero temperature for consistent trend signal interpretation
     llm = get_llm(temperature=0)
     tools = [get_technical_data]
     
+    # Define the system prompt for the trend analysis expert persona
     system_prompt = """You are a Senior Technical Analyst specializing in Trends and Moving Averages (MA). (您是一位專注於趨勢和移動平均線的資深技術分析師。)
     Your goal is to provide a clear trend assessment and key price level analysis based on the technical data provided.
     
@@ -30,17 +40,19 @@ def trend_analyst_node(state: AgentState):
     Start directly with the analysis.
     """
     
-    # Create the agent
+    # Create the ReAct agent with the technical analysis toolset
     agent = create_agent(
         model=llm,
         tools=tools,
         system_prompt=system_prompt
     )
     
+    # Extract operational parameters from the state
     tickers = state["tickers"]
     query = state["query"]
     instructions = state.get("trend_analyst_instructions", "")
     
+    # Construct the task message for the trend analyst
     user_message = f"""分析以下股票的趨勢狀況: {tickers}. 
 
         用戶的特定問題: {query}
@@ -49,8 +61,9 @@ def trend_analyst_node(state: AgentState):
         {instructions}
         """
         
-    # Invoke the agent
+    # Execute the agent to perform technical trend evaluation
     result = agent.invoke({"messages": [("human", user_message)]})
     
+    # Return the generated trend report to the shared state
     last_message = result["messages"][-1]
     return {"trend_analysis": last_message.content}

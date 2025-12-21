@@ -2,26 +2,45 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from src.graph import create_graph
-import json  
-import os  
+import json 
+import os 
 
 import pandas
+
+# Load environment variables from the .env file
 load_dotenv()
 
+# Initialize the FastAPI application
 app = FastAPI(title="Investment Agent API")
 
 class ResearchRequest(BaseModel):
+    """
+    Data model for the investment research request.
+    
+    Attributes:
+        query (str): The specific research question or list of stock tickers.
+        style (str): The target investment strategy (e.g., Balanced, Growth, Value).
+    """
     query: str
-    style: str = "Balanced"  # 新增風格參數，預設為穩健型
+    style: str = "Balanced"  # Default investment style is set to Balanced
 
 @app.post("/research")
 async def research(request: ResearchRequest):
+    """
+    Endpoint to trigger the multi-agent research workflow.
+    
+    This route initializes the agent graph, passes the user query into the state,
+    executes the analysis, and exports a snapshot of the results to a JSON file
+    for development and debugging purposes.
+    """
     try:
+        # Initialize the LangGraph workflow
         graph = create_graph()
-        # Initialize state with all fields required by the new architecture
+        
+        # Initialize the state object with all required fields for the agentic architecture
         initial_state = {
             "query": request.query,
-            "investment_style": request.style,  # <--- 關鍵修改：將參數傳入 State
+            "investment_style": request.style,  # Pass the style parameter into the State
             "tickers": [],
             "data_analyst_instructions": None,
             "news_analyst_instructions": None,
@@ -37,23 +56,30 @@ async def research(request: ResearchRequest):
             "risk_assessment": None,
             "final_report": None
         }
+        
+        # Invoke the graph to start the multi-agent execution
         result = graph.invoke(initial_state)
-        # =========== 【請組員加入這段程式碼】 ===========
-        # 將結果存成 JSON 檔案，方便前端 (UI) 開發者測試
+        
+        # Export the resulting state to a JSON file for frontend development/testing
         output_filename = "real_data_snapshot.json"
         
-        # 使用 default=str 處理 datetime 等無法序列化的物件
+        # Use default=str to handle non-serializable objects like datetime
         with open(output_filename, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=4, default=str)
             
-        print(f"✅ 測試資料已匯出至: {os.path.abspath(output_filename)}")
-        # ==============================================
+        print(f"✅ Research data exported to: {os.path.abspath(output_filename)}")
+        
         return result
+        
     except Exception as e:
+        # Print the full stack trace for backend debugging
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health():
+    """
+    Standard health check endpoint to verify service availability.
+    """
     return {"status": "ok"}

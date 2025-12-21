@@ -1,5 +1,3 @@
-# lydd168/investment-agent/investment-agent-22c26258a839f24043bfdc542e6087bed11ba231/src/agents/indicator_analyst.py
-
 from langchain.agents import create_agent
 from ..state import AgentState
 from ..tools.technical_tools import get_technical_data
@@ -7,11 +5,23 @@ from ..utils import get_llm
 
 def indicator_analyst_node(state: AgentState):
     """
-    Technical Indicator Analyst focusing on momentum and overbought/oversold conditions (e.g., RSI).
+    Agent node specializing in Quantitative Technical Indicators.
+    
+    This agent analyzes momentum oscillators and strength indicators, specifically 
+    RSI (14) and Momentum Index (MTM 10), to identify potential price exhaustion, 
+    reversal signals, or trend confirmation.
+    
+    Args:
+        state (AgentState): The current state of the graph.
+        
+    Returns:
+        dict: A dictionary containing the 'indicator_analysis' report string.
     """
+    # Initialize the LLM with deterministic settings for technical calculation interpretation
     llm = get_llm(temperature=0)
     tools = [get_technical_data]
     
+    # Define the system identity and specialized technical analysis requirements
     system_prompt = """You are an analyst specializing in Quantitative Technical Indicators. (您是一位專注於量化技術指標的分析師。)
     Your goal is to provide a comprehensive momentum assessment, identify overbought/oversold conditions, and check for indicator divergence based on the technical data provided.
     
@@ -31,17 +41,19 @@ def indicator_analyst_node(state: AgentState):
     Start directly with the analysis.
     """
     
-    # Create the agent
+    # Initialize the ReAct agent with technical analysis tools
     agent = create_agent(
         model=llm,
         tools=tools,
         system_prompt=system_prompt
     )
     
+    # Extract operational parameters from the state
     tickers = state["tickers"]
     query = state["query"]
     instructions = state.get("indicator_analyst_instructions", "")
     
+    # Construct the task-specific message for the agent
     user_message = f"""分析以下股票的技術指標狀況: {tickers}. 
 
         用戶的特定問題: {query}
@@ -50,8 +62,9 @@ def indicator_analyst_node(state: AgentState):
         {instructions}
         """
         
-    # Invoke the agent
+    # Execute the technical indicator analysis workflow
     result = agent.invoke({"messages": [("human", user_message)]})
     
+    # Return the generated technical report to the graph state
     last_message = result["messages"][-1]
     return {"indicator_analysis": last_message.content}

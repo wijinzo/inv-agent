@@ -4,15 +4,13 @@ import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import re
-# numpy needed for plot helper function's linspace
 import numpy as np
-from plotly.subplots import make_subplots # 新增 Plotly Subplots 導入
+from plotly.subplots import make_subplots
 import os
 import json
-import streamlit.components.v1 as components # 用於執行自動捲動的 JavaScript
+import streamlit.components.v1 as components
 
 # 1. 設定 & 樣式
-# Page config: 修改 initial_sidebar_state 為 expanded 以便展示設定
 st.set_page_config(
     page_title="AI Investment Analyst",
     page_icon="🤖",
@@ -20,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="expanded" 
 )
 
-# 簡單保留整體深色風格（但不再用 card 的 HTML）
+# 簡單保留整體深色風格
 st.markdown("""
     <style>
     
@@ -34,7 +32,7 @@ st.markdown("""
         padding-bottom: 2rem;
     }
     
-    /* 2. Sidebar (側邊欄) 樣式優化 */
+    /* 2. Sidebar (側邊欄) */
     [data-testid="stSidebar"] {
         background-color: #252629; 
         border-right: 1px solid #3c4043;
@@ -87,14 +85,14 @@ st.markdown("""
         font-weight: bold;
     }
     
-    /* 5. 下拉選單 (Selectbox) 樣式維持 */
+    /* 5. 下拉選單 (Selectbox) */
     .stSelectbox div[data-baseweb="select"] > div {
         background-color: #303134 !important;
         color: #ffffff !important;
         border-color: #5f6368 !important;
     }
             
-    /* 6. 工具列 (Toolbar) 樣式優化 */
+    /* 6. 工具列 (Toolbar) */
     [data-testid="stToolbar"] {
         background-color: #202124;
         color: #e8eaed;
@@ -103,7 +101,7 @@ st.markdown("""
         display: none;
     }
             
-    /* 7. Sidebar 收折/展開按鈕修正 */
+    /* 7. Sidebar 收折/展開按鈕 */
     [data-testid="stSidebarCollapsedControl"] {
         background-color: #202124 !important;
         color: #ffffff !important;
@@ -129,7 +127,7 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* 8. Status Widget & Expander 樣式修正 */
+    /* 8. Status Widget & Expander 樣式 */
     div.stExpander summary,
     div.stExpander summary *,
     div[data-testid="stExpander"] summary,
@@ -145,7 +143,7 @@ st.markdown("""
         border-radius: 4px;
     }
     
-    /* 9. Metric (數據指標) 樣式修正 */
+    /* 9. Metric (數據指標) 樣式 */
     [data-testid="stMetricLabel"] p {
         color: #e8eaed !important;
     }
@@ -172,7 +170,7 @@ st.markdown("""
     }
 
     /* ============================================================
-       11. [修正版] Google Finance 風格 (針對 Key: main_chart_period_selector)
+       11.Google Finance 風格 (針對 Key: main_chart_period_selector)
        使用 :has() 選擇器來準確偵測選中狀態
        ============================================================ */
     
@@ -216,7 +214,7 @@ st.markdown("""
         color: #e8eaed !important;
     }
 
-    /* 6. [關鍵修正] 選中狀態 (Checked) 
+    /* 6. 選中狀態 (Checked) 
        使用 :has(input:checked) 來偵測 label 內部是否有被選中的 input */
     .st-key-main_chart_period_selector label:has(input:checked) {
         border-bottom: 3px solid #8ab4f8 !important; /* 底部藍線 */
@@ -415,7 +413,7 @@ def plot_stock_chart(history, ticker, chart_type='line'):
     # 決定線條顏色 (綠漲紅跌)
     line_color = "#81c995" if end_price >= start_price else "#f28b82" 
     
-    # --- [修改重點] 決定 Y 軸範圍 (非對稱留白，避免標籤被切掉) ---
+    # ---決定 Y 軸範圍 (非對稱留白，避免標籤被切掉) ---
     min_price = history['Low'].min()
     max_price = history['High'].max()
     price_range = max_price - min_price
@@ -563,11 +561,6 @@ def format_large_number(num):
         return f"{num/1_000_000:.2f}百萬"
     return f"{num:,.2f}"
 
-
-# ---------------------------------------------------------
-# NEW Helper for Technical Analysis Calculation
-# ---------------------------------------------------------
-
 def calculate_sma(history, window):
     """Calculates Simple Moving Average on the Close price."""
     return history['Close'].rolling(window=window).mean()
@@ -587,10 +580,6 @@ def calculate_rsi(df, window=14):
 def calculate_mtm(df, window=10):
     """Calculates Momentum Index (MTM)"""
     return df['Close'].diff(window)
-
-# ---------------------------------------------------------
-# Refactored Helper for Technical Analysis Plotting
-# ---------------------------------------------------------
 
 def plot_technical_analysis(history, ticker, price_lines=None, indicator_list=None, title="技術分析"):
     """
@@ -896,9 +885,9 @@ if start_analysis:
                     st.session_state.research_result = response_json
                     status.update(label="分析完成！報告已生成", state="complete", expanded=False)
                     
-                    # [關鍵功能] 搜尋完成後，設定 Flag 觸發自動捲動
+                    # 搜尋完成後，設定 Flag 觸發自動捲動
                     st.session_state['trigger_scroll_dashboard'] = True
-                    # --- [新增] 強制重跑以更新 Sidebar 的股票列表 ---
+                    # --- 強制重跑以更新 Sidebar 的股票列表 ---
                     st.rerun()
                     
                 else:
@@ -924,7 +913,7 @@ if 'research_result' in st.session_state:
 
     st.markdown("---")
     
-    # [錨點 2] 儀表板錨點 (保留)
+    # [錨點 2] 儀表板錨點
     st.markdown('<div id="dashboard-area" style="position:relative; top:-60px; visibility:hidden;"></div>', unsafe_allow_html=True)
     
     # =========================================================
@@ -996,7 +985,7 @@ if 'research_result' in st.session_state:
             
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # [錨點 3] 報告錨點 (保留)
+    # [錨點 3] 報告錨點
     st.markdown('<div id="report-area" style="position:relative; top:-60px; visibility:hidden;"></div>', unsafe_allow_html=True)
 
     # =========================================================
@@ -1045,7 +1034,7 @@ if 'research_result' in st.session_state:
             with st.expander("📰 新聞摘要 (Narrative)", expanded=True): 
                 raw_news = extract_text_from_content(result.get("news_analysis", "暫無新聞分析"))
                 
-                # --- [修改] 遇到 "新聞連結 (新聞連結)" 就直接切斷後面的內容 ---
+                # --- 遇到 "新聞連結 (新聞連結)" 就直接切斷後面的內容 ---
                 # 這裡設定幾個可能的標題變體以防 Markdown 格式不同
                 pattern = r"(?:#+|\*\*|__)?\s*新聞連結\s*[(\uff08].*?新聞連結.*"
                 
@@ -1064,7 +1053,7 @@ if 'research_result' in st.session_state:
 
 # =========================================================
 #  Late Injection for Auto-Scrolling
-#  (保留：僅用於搜尋完成後跳轉至儀表板)
+#  (搜尋完成後跳轉至儀表板)
 # =========================================================
 js_scroll_code = ""
 

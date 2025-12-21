@@ -12,11 +12,19 @@ from .agents.technical_strategist import technical_strategist_node
 
 def create_graph():
     """
-    Creates the Multi-Agent Investment Research Graph.
+    Constructs and compiles the LangGraph state machine for the multi-agent workflow.
+    
+    This function defines the agent nodes, sets up parallel execution paths (fan-out),
+    handles synchronization points (join), and establishes the final sequential 
+    processing order to generate the investment report.
+
+    Returns:
+        CompiledStateGraph: The compiled workflow ready for execution.
     """
+    # Initialize the state graph with the shared AgentState schema
     workflow = StateGraph(AgentState)
 
-    # Add nodes
+    # Register all agent nodes into the graph
     workflow.add_node("router", router_node)
     workflow.add_node("data_analyst", data_analyst_node)
     workflow.add_node("news_analyst", news_analyst_node)
@@ -27,32 +35,32 @@ def create_graph():
     workflow.add_node("risk_manager", risk_manager_node)
     workflow.add_node("editor", editor_node)
 
-    # Set entry point
+    # Define the entry point of the workflow
     workflow.set_entry_point("router")
 
-    # Add edges
-    # Router -> All Analysts (Parallel Fan-Out)
+    # Routing logic: Parallel Fan-Out from Router to all Analysts
     workflow.add_edge("router", "data_analyst")
     workflow.add_edge("router", "news_analyst")
     workflow.add_edge("router", "trend_analyst")
     workflow.add_edge("router", "pattern_analyst")
     workflow.add_edge("router", "indicator_analyst")
 
-    # Technical Analysts -> Technical Strategist (Join)
+    # Technical Analysts synchronization: Join at Technical Strategist
     workflow.add_edge("trend_analyst", "technical_strategist")
     workflow.add_edge("pattern_analyst", "technical_strategist")
     workflow.add_edge("indicator_analyst", "technical_strategist")
     
-    # Parallel Branches Join into Risk Manager
-    # Risk Manager waits for Data Analyst, News Analyst, AND Technical Strategist
+    # Parallel branch synchronization: Final join at Risk Manager
+    # Risk Manager waits for results from Data, News, and Technical Strategy
     workflow.add_edge("data_analyst", "risk_manager")
     workflow.add_edge("news_analyst", "risk_manager")
     workflow.add_edge("technical_strategist", "risk_manager")
 
-    # Risk Manager -> Editor
+    # Transition from risk assessment to the final editing phase
     workflow.add_edge("risk_manager", "editor")
 
-    # Editor -> End
+    # Mark the end of the workflow
     workflow.add_edge("editor", END)
 
+    # Compile the graph into an executable state machine
     return workflow.compile()

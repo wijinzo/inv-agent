@@ -2,7 +2,7 @@ from langchain_core.tools import tool
 import yfinance as yf
 import pandas as pd
 
-# 讓表格對齊中文
+# Set pandas option to ensure proper alignment for Chinese characters in tables
 pd.set_option('display.unicode.east_asian_width', True)
 
 @tool
@@ -10,14 +10,21 @@ def get_stock_analysis_data(ticker: str) -> str:
     """
     Retrieves comprehensive stock data for a given ticker.
     Includes Real-time valuation, Analyst estimates, and 5-year Financial trends.
+    
+    Args:
+        ticker (str): The stock symbol to analyze.
+        
+    Returns:
+        str: A formatted report containing valuation, estimates, and financial statements.
     """
     try:
         stock = yf.Ticker(ticker)
         
-        # ... (Part 1: Real-Time Snapshot 保持不變) ...
+        # 1. Real-Time Snapshot and Valuation Metadata
         info = stock.info
         
         def fmt_num(num):
+            """Helper to format large numbers into T/B/M suffixes."""
             if isinstance(num, (int, float)):
                 if abs(num) >= 1e12: return f"{num/1e12:.2f}T"
                 if abs(num) >= 1e9: return f"{num/1e9:.2f}B"
@@ -25,6 +32,7 @@ def get_stock_analysis_data(ticker: str) -> str:
                 return f"{num:.2f}"
             return num
 
+        # Extract core valuation metrics
         valuation = {
             "Market Cap": fmt_num(info.get("marketCap")),
             "Trailing P/E": fmt_num(info.get("trailingPE")),
@@ -33,17 +41,18 @@ def get_stock_analysis_data(ticker: str) -> str:
             "Price/Book": fmt_num(info.get("priceToBook")),
             "Dividend Yield": fmt_num(info.get("dividendYield")),
             "Current ROE": fmt_num(info.get("returnOnEquity")),
-            "Current Op Margin": fmt_num(info.get("operatingMargins")) # 稍微縮短 key 名稱
+            "Current Op Margin": fmt_num(info.get("operatingMargins"))
         }
 
+        # Extract consensus analyst price targets and recommendations
         estimates = {
-            "Target Mean": info.get("targetMeanPrice"), # 縮短 key 名稱
+            "Target Mean": info.get("targetMeanPrice"),
             "Target High": info.get("targetHighPrice"),
             "Recommendation": info.get("recommendationKey"),
             "Num Analysts": info.get("numberOfAnalystOpinions")
         }
 
-        # ... (Part 2: Long-Term Trends) ...
+        # 2. Historical Price Performance (5-Year Lookback)
         history = stock.history(period="5y", interval="1mo")
         if history.empty:
             price_trend = "No price data."
@@ -61,8 +70,8 @@ def get_stock_analysis_data(ticker: str) -> str:
                 "Low": round(history['Low'].min(), 2)
             }
 
-        # 2. Financial Statements Helper (改用 to_string + east_asian_width)
         def format_financials(df, key_metrics):
+            """Formats financial dataframes into aligned strings for the analyst agents."""
             if df is None or df.empty:
                 return "Data not available"
             
@@ -71,24 +80,24 @@ def get_stock_analysis_data(ticker: str) -> str:
                 return "Key metrics not found"
             
             selected = df.loc[existing]
-            # 欄位轉為年份
+            # Convert column timestamps to year strings
             selected.columns = [col.strftime('%Y') if hasattr(col, 'strftime') else str(col) for col in selected.columns]
             
-            # 數值格式化
+            # Apply formatting to all numeric values in the dataframe
             for col in selected.columns:
                 selected[col] = selected[col].apply(lambda x: fmt_num(x) if isinstance(x, (int, float)) else x)
             
-            # --- 這裡改用 to_string()，配合最上面的 pd.set_option，中文就會對齊了 ---
+            # Return as a string; east_asian_width ensures alignment when printed
             return selected.to_string()
 
-        # A. Income Statement
+        # Extract specific line items from Income Statement and Balance Sheet
         income_metrics = ["Total Revenue", "Gross Profit", "Operating Income", "Net Income", "Diluted EPS"]
         income_str = format_financials(stock.financials, income_metrics)
 
-        # B. Balance Sheet
         balance_metrics = ["Stockholders Equity", "Total Assets", "Total Debt"]
         balance_str = format_financials(stock.balance_sheet, balance_metrics)
 
+        # Assemble the final structured text report
         return f"""
         REPORT FOR: {ticker}
         
@@ -112,4 +121,5 @@ def get_stock_analysis_data(ticker: str) -> str:
         """
 
     except Exception as e:
+        # Return error message for the agent to handle
         return f"Error: {str(e)}"
